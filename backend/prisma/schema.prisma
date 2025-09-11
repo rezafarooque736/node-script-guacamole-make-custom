@@ -1,0 +1,387 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model guacamole_connection {
+  connection_id                   Int                                           @id @default(autoincrement())
+  connection_name                 String                                        @db.VarChar(128)
+  parent_id                       Int?
+  protocol                        String                                        @db.VarChar(32)
+  proxy_port                      Int?
+  proxy_hostname                  String?                                       @db.VarChar(512)
+  proxy_encryption_method         guacamole_connection_proxy_encryption_method?
+  max_connections                 Int?
+  max_connections_per_user        Int?
+  connection_weight               Int?
+  failover_only                   Boolean                                       @default(false)
+  guacamole_connection_group      guacamole_connection_group?                   @relation(fields: [parent_id], references: [connection_group_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_ibfk_1")
+  guacamole_connection_attribute  guacamole_connection_attribute[]
+  guacamole_connection_history    guacamole_connection_history[]
+  guacamole_connection_parameter  guacamole_connection_parameter[]
+  guacamole_connection_permission guacamole_connection_permission[]
+  guacamole_sharing_profile       guacamole_sharing_profile[]
+
+  @@unique([connection_name, parent_id], map: "connection_name_parent")
+  @@index([parent_id], map: "guacamole_connection_ibfk_1")
+}
+
+model guacamole_connection_attribute {
+  connection_id        Int
+  attribute_name       String               @db.VarChar(128)
+  attribute_value      String               @db.VarChar(4096)
+  guacamole_connection guacamole_connection @relation(fields: [connection_id], references: [connection_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_attribute_ibfk_1")
+
+  @@id([connection_id, attribute_name])
+  @@index([connection_id], map: "connection_id")
+}
+
+model guacamole_connection_group {
+  connection_group_id                   Int                                     @id @default(autoincrement())
+  parent_id                             Int?
+  connection_group_name                 String                                  @db.VarChar(128)
+  type                                  guacamole_connection_group_type         @default(ORGANIZATIONAL)
+  max_connections                       Int?
+  max_connections_per_user              Int?
+  enable_session_affinity               Boolean                                 @default(false)
+  guacamole_connection                  guacamole_connection[]
+  guacamole_connection_group            guacamole_connection_group?             @relation("guacamole_connection_groupToguacamole_connection_group", fields: [parent_id], references: [connection_group_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_group_ibfk_1")
+  other_guacamole_connection_group      guacamole_connection_group[]            @relation("guacamole_connection_groupToguacamole_connection_group")
+  guacamole_connection_group_attribute  guacamole_connection_group_attribute[]
+  guacamole_connection_group_permission guacamole_connection_group_permission[]
+
+  @@unique([connection_group_name, parent_id], map: "connection_group_name_parent")
+  @@index([parent_id], map: "guacamole_connection_group_ibfk_1")
+}
+
+model guacamole_connection_group_attribute {
+  connection_group_id        Int
+  attribute_name             String                     @db.VarChar(128)
+  attribute_value            String                     @db.VarChar(4096)
+  guacamole_connection_group guacamole_connection_group @relation(fields: [connection_group_id], references: [connection_group_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_group_attribute_ibfk_1")
+
+  @@id([connection_group_id, attribute_name])
+  @@index([connection_group_id], map: "connection_group_id")
+}
+
+model guacamole_connection_group_permission {
+  entity_id                  Int
+  connection_group_id        Int
+  permission                 guacamole_connection_group_permission_permission
+  guacamole_entity           guacamole_entity                                 @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_group_permission_entity")
+  guacamole_connection_group guacamole_connection_group                       @relation(fields: [connection_group_id], references: [connection_group_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_group_permission_ibfk_1")
+
+  @@id([entity_id, connection_group_id, permission])
+  @@index([connection_group_id], map: "guacamole_connection_group_permission_ibfk_1")
+}
+
+model guacamole_connection_history {
+  history_id                Int                        @id @default(autoincrement())
+  user_id                   Int?
+  username                  String                     @db.VarChar(128)
+  remote_host               String?                    @db.VarChar(256)
+  connection_id             Int?
+  connection_name           String                     @db.VarChar(128)
+  sharing_profile_id        Int?
+  sharing_profile_name      String?                    @db.VarChar(128)
+  start_date                DateTime                   @db.DateTime(0)
+  end_date                  DateTime?                  @db.DateTime(0)
+  guacamole_user            guacamole_user?            @relation(fields: [user_id], references: [user_id], onUpdate: Restrict, map: "guacamole_connection_history_ibfk_1")
+  guacamole_connection      guacamole_connection?      @relation(fields: [connection_id], references: [connection_id], onUpdate: Restrict, map: "guacamole_connection_history_ibfk_2")
+  guacamole_sharing_profile guacamole_sharing_profile? @relation(fields: [sharing_profile_id], references: [sharing_profile_id], onUpdate: Restrict, map: "guacamole_connection_history_ibfk_3")
+
+  @@index([connection_id], map: "connection_id")
+  @@index([connection_id, start_date], map: "connection_start_date")
+  @@index([end_date], map: "end_date")
+  @@index([sharing_profile_id], map: "sharing_profile_id")
+  @@index([start_date], map: "start_date")
+  @@index([user_id], map: "user_id")
+}
+
+model guacamole_connection_parameter {
+  connection_id        Int
+  parameter_name       String               @db.VarChar(128)
+  parameter_value      String               @db.VarChar(4096)
+  guacamole_connection guacamole_connection @relation(fields: [connection_id], references: [connection_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_parameter_ibfk_1")
+
+  @@id([connection_id, parameter_name])
+}
+
+model guacamole_connection_permission {
+  entity_id            Int
+  connection_id        Int
+  permission           guacamole_connection_permission_permission
+  guacamole_entity     guacamole_entity                           @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_permission_entity")
+  guacamole_connection guacamole_connection                       @relation(fields: [connection_id], references: [connection_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_connection_permission_ibfk_1")
+
+  @@id([entity_id, connection_id, permission])
+  @@index([connection_id], map: "guacamole_connection_permission_ibfk_1")
+}
+
+model guacamole_entity {
+  entity_id                             Int                                     @id @default(autoincrement())
+  name                                  String                                  @db.VarChar(128)
+  type                                  guacamole_entity_type
+  guacamole_connection_group_permission guacamole_connection_group_permission[]
+  guacamole_connection_permission       guacamole_connection_permission[]
+  guacamole_sharing_profile_permission  guacamole_sharing_profile_permission[]
+  guacamole_system_permission           guacamole_system_permission[]
+  guacamole_user                        guacamole_user?
+  guacamole_user_group                  guacamole_user_group?
+  guacamole_user_group_member           guacamole_user_group_member[]
+  guacamole_user_group_permission       guacamole_user_group_permission[]
+  guacamole_user_permission             guacamole_user_permission[]
+
+  @@unique([type, name], map: "guacamole_entity_name_scope")
+}
+
+model guacamole_sharing_profile {
+  sharing_profile_id                   Int                                    @id @default(autoincrement())
+  sharing_profile_name                 String                                 @db.VarChar(128)
+  primary_connection_id                Int
+  guacamole_connection_history         guacamole_connection_history[]
+  guacamole_connection                 guacamole_connection                   @relation(fields: [primary_connection_id], references: [connection_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_sharing_profile_ibfk_1")
+  guacamole_sharing_profile_attribute  guacamole_sharing_profile_attribute[]
+  guacamole_sharing_profile_parameter  guacamole_sharing_profile_parameter[]
+  guacamole_sharing_profile_permission guacamole_sharing_profile_permission[]
+
+  @@unique([sharing_profile_name, primary_connection_id], map: "sharing_profile_name_primary")
+  @@index([primary_connection_id], map: "guacamole_sharing_profile_ibfk_1")
+}
+
+model guacamole_sharing_profile_attribute {
+  sharing_profile_id        Int
+  attribute_name            String                    @db.VarChar(128)
+  attribute_value           String                    @db.VarChar(4096)
+  guacamole_sharing_profile guacamole_sharing_profile @relation(fields: [sharing_profile_id], references: [sharing_profile_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_sharing_profile_attribute_ibfk_1")
+
+  @@id([sharing_profile_id, attribute_name])
+  @@index([sharing_profile_id], map: "sharing_profile_id")
+}
+
+model guacamole_sharing_profile_parameter {
+  sharing_profile_id        Int
+  parameter_name            String                    @db.VarChar(128)
+  parameter_value           String                    @db.VarChar(4096)
+  guacamole_sharing_profile guacamole_sharing_profile @relation(fields: [sharing_profile_id], references: [sharing_profile_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_sharing_profile_parameter_ibfk_1")
+
+  @@id([sharing_profile_id, parameter_name])
+}
+
+model guacamole_sharing_profile_permission {
+  entity_id                 Int
+  sharing_profile_id        Int
+  permission                guacamole_sharing_profile_permission_permission
+  guacamole_entity          guacamole_entity                                @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_sharing_profile_permission_entity")
+  guacamole_sharing_profile guacamole_sharing_profile                       @relation(fields: [sharing_profile_id], references: [sharing_profile_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_sharing_profile_permission_ibfk_1")
+
+  @@id([entity_id, sharing_profile_id, permission])
+  @@index([sharing_profile_id], map: "guacamole_sharing_profile_permission_ibfk_1")
+}
+
+model guacamole_system_permission {
+  entity_id        Int
+  permission       guacamole_system_permission_permission
+  guacamole_entity guacamole_entity                       @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_system_permission_entity")
+
+  @@id([entity_id, permission])
+}
+
+model guacamole_user {
+  user_id                         Int                               @id @default(autoincrement())
+  entity_id                       Int                               @unique(map: "guacamole_user_single_entity")
+  password_hash                   Bytes                             @db.Binary(32)
+  password_salt                   Bytes?                            @db.Binary(32)
+  password_date                   DateTime                          @db.DateTime(0)
+  disabled                        Boolean                           @default(false)
+  expired                         Boolean                           @default(false)
+  access_window_start             DateTime?                         @db.Time(0)
+  access_window_end               DateTime?                         @db.Time(0)
+  valid_from                      DateTime?                         @db.Date
+  valid_until                     DateTime?                         @db.Date
+  timezone                        String?                           @db.VarChar(64)
+  full_name                       String?                           @db.VarChar(256)
+  email_address                   String?                           @db.VarChar(256)
+  organization                    String?                           @db.VarChar(256)
+  organizational_role             String?                           @db.VarChar(256)
+  guacamole_connection_history    guacamole_connection_history[]
+  guacamole_entity                guacamole_entity                  @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_entity")
+  guacamole_user_attribute        guacamole_user_attribute[]
+  guacamole_user_history          guacamole_user_history[]
+  guacamole_user_password_history guacamole_user_password_history[]
+  guacamole_user_permission       guacamole_user_permission[]
+}
+
+model guacamole_user_attribute {
+  user_id         Int
+  attribute_name  String         @db.VarChar(128)
+  attribute_value String         @db.VarChar(4096)
+  guacamole_user  guacamole_user @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_attribute_ibfk_1")
+
+  @@id([user_id, attribute_name])
+  @@index([user_id], map: "user_id")
+}
+
+model guacamole_user_available_ip {
+  id                Int       @id @default(autoincrement())
+  ip                String    @db.VarChar(256)
+  // ip                String    @id @db.VarChar(256)
+  group_name        String    @db.VarChar(128)
+  user_id           Int?
+  username          String?   @db.VarChar(128)
+  start_date        DateTime? @db.DateTime(0)
+  is_available_user Int       @default(0) @db.TinyInt
+  connection_id     Int?
+  container_name    String?   @db.VarChar(128)
+
+  @@index([user_id], map: "user_id")
+  @@index([ip], map: "ip")
+}
+
+model guacamole_user_group {
+  user_group_id                   Int                               @id @default(autoincrement())
+  entity_id                       Int                               @unique(map: "guacamole_user_group_single_entity")
+  disabled                        Boolean                           @default(false)
+  guacamole_entity                guacamole_entity                  @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_group_entity")
+  guacamole_user_group_attribute  guacamole_user_group_attribute[]
+  guacamole_user_group_member     guacamole_user_group_member[]
+  guacamole_user_group_permission guacamole_user_group_permission[]
+}
+
+model guacamole_user_group_attribute {
+  user_group_id        Int
+  attribute_name       String               @db.VarChar(128)
+  attribute_value      String               @db.VarChar(4096)
+  guacamole_user_group guacamole_user_group @relation(fields: [user_group_id], references: [user_group_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_group_attribute_ibfk_1")
+
+  @@id([user_group_id, attribute_name])
+  @@index([user_group_id], map: "user_group_id")
+}
+
+model guacamole_user_group_member {
+  user_group_id        Int
+  member_entity_id     Int
+  guacamole_entity     guacamole_entity     @relation(fields: [member_entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_group_member_entity_id")
+  guacamole_user_group guacamole_user_group @relation(fields: [user_group_id], references: [user_group_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_group_member_parent_id")
+
+  @@id([user_group_id, member_entity_id])
+  @@index([member_entity_id], map: "guacamole_user_group_member_entity_id")
+}
+
+model guacamole_user_group_permission {
+  entity_id              Int
+  affected_user_group_id Int
+  permission             guacamole_user_group_permission_permission
+  guacamole_user_group   guacamole_user_group                       @relation(fields: [affected_user_group_id], references: [user_group_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_group_permission_affected_user_group")
+  guacamole_entity       guacamole_entity                           @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_group_permission_entity")
+
+  @@id([entity_id, affected_user_group_id, permission])
+  @@index([affected_user_group_id], map: "guacamole_user_group_permission_affected_user_group")
+}
+
+model guacamole_user_history {
+  history_id     Int             @id @default(autoincrement())
+  user_id        Int?
+  username       String          @db.VarChar(128)
+  remote_host    String?         @db.VarChar(256)
+  start_date     DateTime        @db.DateTime(0)
+  end_date       DateTime?       @db.DateTime(0)
+  guacamole_user guacamole_user? @relation(fields: [user_id], references: [user_id], onUpdate: Restrict, map: "guacamole_user_history_ibfk_1")
+
+  @@index([end_date], map: "end_date")
+  @@index([start_date], map: "start_date")
+  @@index([user_id], map: "user_id")
+  @@index([user_id, start_date], map: "user_start_date")
+}
+
+model guacamole_user_history_changes {
+  id               Int      @id @default(autoincrement())
+  start_data_value DateTime @default(now()) @db.Timestamp(0)
+  change_time      DateTime @default(now()) @db.Timestamp(0)
+}
+
+model guacamole_user_password_history {
+  password_history_id Int            @id @default(autoincrement())
+  user_id             Int
+  password_hash       Bytes          @db.Binary(32)
+  password_salt       Bytes?         @db.Binary(32)
+  password_date       DateTime       @db.DateTime(0)
+  guacamole_user      guacamole_user @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_password_history_ibfk_1")
+
+  @@index([user_id], map: "user_id")
+}
+
+model guacamole_user_permission {
+  entity_id        Int
+  affected_user_id Int
+  permission       guacamole_user_permission_permission
+  guacamole_entity guacamole_entity                     @relation(fields: [entity_id], references: [entity_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_permission_entity")
+  guacamole_user   guacamole_user                       @relation(fields: [affected_user_id], references: [user_id], onDelete: Cascade, onUpdate: Restrict, map: "guacamole_user_permission_ibfk_1")
+
+  @@id([entity_id, affected_user_id, permission])
+  @@index([affected_user_id], map: "guacamole_user_permission_ibfk_1")
+}
+
+enum guacamole_system_permission_permission {
+  CREATE_CONNECTION
+  CREATE_CONNECTION_GROUP
+  CREATE_SHARING_PROFILE
+  CREATE_USER
+  CREATE_USER_GROUP
+  ADMINISTER
+}
+
+enum guacamole_connection_group_permission_permission {
+  READ
+  UPDATE
+  DELETE
+  ADMINISTER
+}
+
+enum guacamole_sharing_profile_permission_permission {
+  READ
+  UPDATE
+  DELETE
+  ADMINISTER
+}
+
+enum guacamole_entity_type {
+  USER
+  USER_GROUP
+}
+
+enum guacamole_connection_permission_permission {
+  READ
+  UPDATE
+  DELETE
+  ADMINISTER
+}
+
+enum guacamole_user_permission_permission {
+  READ
+  UPDATE
+  DELETE
+  ADMINISTER
+}
+
+enum guacamole_user_group_permission_permission {
+  READ
+  UPDATE
+  DELETE
+  ADMINISTER
+}
+
+enum guacamole_connection_group_type {
+  ORGANIZATIONAL
+  BALANCING
+}
+
+enum guacamole_connection_proxy_encryption_method {
+  NONE
+  SSL
+}

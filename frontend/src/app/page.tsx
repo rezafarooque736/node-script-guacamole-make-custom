@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { z } from 'zod';
+import { json, z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { Button } from '@/components/ui/button';
@@ -11,15 +11,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Form, FormField, FormItem, FormControl, FormMessage } from '@/components/ui/form';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
-import { Toaster, toast } from 'sonner'; // add sonner
+import { toast } from 'sonner';
 import { CheckCircleIcon } from 'lucide-react';
-// Also render <Toaster /> once in this page component
 
-const groupsAllowed = ['primary', 'secondary'] as const;
+// import components and hooks
+import GroupsPanel from '@/components/groups/groups-panel';
+import AddIPsPanel from '@/components/ip/add-ips-panel';
+
+const groupsAllowed = await fetch('http://localhost:3000/api/guacamole-groups', { cache: 'no-store' })
+  .then((res) => res.json())
+  .then((json) => json.data.map((g: { name: string; disabled: boolean }) => g.name));
 
 const ipEntrySchema = z.object({
-  old_ip: z.ipv4(),
-  new_ip: z.ipv4(),
+  old_ip: z.string(), // keep validation simple in UI layer (server will validate)
+  new_ip: z.string(),
   old_group: z.enum(groupsAllowed),
   new_group: z.enum(groupsAllowed),
   use_cidr: z.boolean().optional(),
@@ -43,6 +48,25 @@ function incrementIp(ip: string, increment: number) {
 }
 
 export default function Page() {
+  const [groups, setGroups] = useState<{ name: string }[]>([]);
+
+  // load groups for AddIPsPanel (keeps single source of truth in page)
+  const loadGroups = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/api/guacamole-groups', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to load groups');
+      const json = await res.json();
+      setGroups(json.data ?? []);
+    } catch (e) {
+      setGroups([]);
+      toast.error(e instanceof Error ? e.message : 'Failed to load groups');
+    }
+  };
+
+  useEffect(() => {
+    loadGroups();
+  }, []);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: async () => {
@@ -59,16 +83,15 @@ export default function Page() {
         }));
         return { entries };
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Failed to load IPs'); // non-blocking UI [1][5]
-        return { entries: [] }; // safe fallback so page renders [7]
+        toast.error(e instanceof Error ? e.message : 'Failed to load IPs');
+        return { entries: [] };
       }
     },
     mode: 'onBlur',
   });
 
-  const { control, handleSubmit, setValue, getValues, formState, reset, trigger } = form;
-
-  const { fields } = useFieldArray({ name: 'entries', control }); // [20]
+  const { control, handleSubmit, setValue, getValues, formState, reset } = form;
+  const { fields } = useFieldArray({ name: 'entries', control });
 
   const [confirmIndex, setConfirmIndex] = useState<number | null>(null);
   const [confirmValue, setConfirmValue] = useState<boolean | null>(null);
@@ -80,7 +103,6 @@ export default function Page() {
       .sort((a, b) => a - b);
   }
 
-  // Fix: robust propagation when CIDR is enabled
   function updateIpsWithCidr(
     entries: FormValues['entries'],
     formSetValue: (name: `entries.${number}.new_ip`, value: string, opts?: any) => void
@@ -88,14 +110,11 @@ export default function Page() {
     const cidrIndices = findUseCidrIndices(entries);
     if (cidrIndices.length === 0) return;
 
-    // Treat end of array as a virtual next CIDR start
     cidrIndices.push(entries.length);
 
     for (let block = 0; block < cidrIndices.length - 1; block++) {
       const startIdx = cidrIndices[block];
       const endExclusive = cidrIndices[block + 1];
-
-      // Base IP is whatever is at startIdx now
       const baseIp = getValues(`entries.${startIdx}.new_ip`);
       formSetValue(`entries.${startIdx}.new_ip`, baseIp, { shouldDirty: true });
 
@@ -131,7 +150,6 @@ export default function Page() {
       const blockStart = cidrIndices.reduce((prev, curr) => (curr <= index ? curr : prev), -1);
       if (blockStart === -1) return;
 
-      // Set new base at blockStart to current value
       setValue(`entries.${blockStart}.new_ip`, value, { shouldDirty: true });
 
       const nextBlockStart = cidrIndices.find((i) => i > blockStart) ?? entries.length;
@@ -154,7 +172,7 @@ export default function Page() {
       new_group: row.group_name,
       use_cidr: false,
     }));
-    reset({ entries }); // keep UI in sync with backend after write [7][11]
+    reset({ entries });
   }
 
   const onSubmit = async (data: FormValues) => {
@@ -165,7 +183,6 @@ export default function Page() {
       new_group,
     }));
 
-    // Use promise toast for UX
     await toast.promise(
       (async () => {
         const response = await fetch('http://localhost:3000/api/guacamole-ip', {
@@ -177,7 +194,6 @@ export default function Page() {
           const err = await response.json().catch(() => ({}));
           throw new Error(err.message ?? 'Update failed');
         }
-        // After successful write, reload fresh data and sync UI
         await refreshFromBackend();
       })(),
       {
@@ -188,22 +204,13 @@ export default function Page() {
     );
   };
 
-  {
-    (form.getValues('entries')?.length ?? 0) === 0 && (
-      <Alert variant="destructive">
-        <AlertTitle>No IP data loaded</AlertTitle>
-        <AlertDescription>
-          Unable to load IPs from the server. Try again later or check the API.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
   return (
     <main className="max-w-7xl mx-auto p-6">
-      {/* Mount Sonner toaster once on the page */}
-      {/* SOP alert at top */}
+      <GroupsPanel />
+      <AddIPsPanel groups={groups} refreshFromBackend={refreshFromBackend} />
+
       <h1 className="text-3xl font-bold mb-6">Update Secure Machine User IPs and Groups</h1>
+
       <div className="mb-4">
         <Alert>
           <CheckCircleIcon />
@@ -219,13 +226,12 @@ export default function Page() {
             </ul>
           </AlertDescription>
         </Alert>
-      </div>{' '}
-      {}
+      </div>
+
       <Form {...form}>
         <form
           onSubmit={handleSubmit(onSubmit, () => {
-            toast.error('Please fix validation errors before submitting.'); // [3][1]
-            // Optionally scroll to top
+            toast.error('Please fix validation errors before submitting.');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           })}
           className="space-y-6"
@@ -302,15 +308,14 @@ export default function Page() {
                                 className="rounded border border-gray-300 px-2 py-1"
                                 onChange={(e) => {
                                   field.onChange(e);
-                                  // mark dirty so partial updates can pick it up if needed
                                   setValue(`entries.${index}.new_group`, e.target.value as any, {
                                     shouldDirty: true,
                                   });
                                 }}
                               >
-                                {groupsAllowed.map((g) => (
-                                  <option key={g} value={g}>
-                                    {g}
+                                {groups.map((g) => (
+                                  <option key={g.name} value={g.name}>
+                                    {g.name}
                                   </option>
                                 ))}
                               </select>
@@ -360,6 +365,7 @@ export default function Page() {
           </div>
         </form>
       </Form>
+
       {/* Confirmation Dialog */}
       {confirmIndex !== null && confirmValue === true && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">

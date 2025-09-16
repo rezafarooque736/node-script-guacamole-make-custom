@@ -1,56 +1,94 @@
-import { fetchGuacamoleUserAvailableIPs, updateGuacamoleUserAvailableIP } from '../services/ip.service';
-import { updateGuacamoleUserAvailableIPSchema, IncomingData } from '../validators/ip.validators';
+// controllers/ip.controller.ts
+import {
+  fetchGuacamoleUserAvailableIPs,
+  updateGuacamoleUserAvailableIP,
+  createBulkGuacamoleIPs,
+} from '../services/ip.service';
+import {
+  updateGuacamoleUserAvailableIPSchema,
+  createGuacamoleUserAvailableIPSchema,
+} from '../validators/ip.validators';
 import { Request, Response } from 'express';
 
-/**
- * Controller to handle fetching available IPs for Guacamole users.
- * Controller to handle changing a single Guacamole user's available IPs.
- */
+function zodIssuesToMap(issues: any[]) {
+  const map: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const path =
+      Array.isArray(issue.path) && issue.path.length > 0 ? issue.path.join('.') : issue.path || 'root';
+    if (!map[path]) map[path] = [];
+    map[path].push(issue.message);
+  }
+  return map;
+}
 
 export const getGuacamoleUserAvailableIPs = async (req: Request, res: Response): Promise<void> => {
   try {
-    // Logic to get available IPs for Guacamole user from the database
     const availableIPs = await fetchGuacamoleUserAvailableIPs();
     res.status(200).json({
       success: true,
       message: 'Available IPs fetched successfully',
       data: availableIPs,
     });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ success: false, message: 'Error fetching available IPs', error: error.message });
   }
 };
 
-export const changeSingleGuacamoleUserAvailableIPs = async (req: Request, res: Response): Promise<void> => {
+export const updateGuacamoleUserAvailableIPs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const incomingData: IncomingData = req.body;
-    const validation = updateGuacamoleUserAvailableIPSchema.safeParse(incomingData);
+    const incoming = req.body;
+    const parsed = updateGuacamoleUserAvailableIPSchema.safeParse(incoming);
 
-    if (!validation.success) {
-      // Extract all error messages
-      const messages = validation.error.issues.map(
-        (issue) => `Path ${issue.path.join('.')} - ${issue.message}`
-      );
-
-      // Print error messages
-      console.error('Validation Error(s):', messages);
-
-      // Return error messages
-      res.status(400).json({
-        success: false,
-        message: 'Invalid input data',
-        errors: messages,
-      });
-      return;
+    if (!parsed.success) {
+      const errors = zodIssuesToMap(parsed.error.issues);
+      return res.status(400).json({ success: false, message: 'Invalid input data', errors });
     }
 
-    await updateGuacamoleUserAvailableIP(validation.data);
+    await updateGuacamoleUserAvailableIP(parsed.data);
 
     res.status(200).json({
       success: true,
-      message: 'IP, Group updated successfully',
+      message: 'IP(s) updated successfully',
     });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Error updating IP', error: error.message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Error updating IP(s)', error: error.message });
+  }
+};
+
+export const createGuacamoleUserAvailableIPs = async (req: Request, res: Response) => {
+  try {
+    const parsed = createGuacamoleUserAvailableIPSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const errors = zodIssuesToMap(parsed.error.issues);
+      return res.status(400).json({ success: false, message: 'Invalid input data', errors });
+    }
+
+    const { count, allocations, ips } = parsed.data;
+
+    if (Array.isArray(ips) && ips.length > 0) {
+      const created = await createBulkGuacamoleIPs(allocations, count, ips);
+      return res.status(201).json({ success: true, message: 'IPs created', data: created });
+    }
+
+    // Server-side generation per allocation from its first_ip
+    const ipsToUse: string[] = [];
+    for (const a of allocations) {
+      const start = a.first_ip!;
+      const parts = start.split('.').map(Number);
+      let curr = [...parts];
+      for (let i = 0; i < a.amount; i++) {
+        ipsToUse.push(curr.join('.'));
+        for (let j = 3; j >= 0; j--) {
+          curr[j] = (curr[j] ?? 0) + 1;
+          if (curr[j] <= 255) break;
+          curr[j] = 0;
+        }
+      }
+    }
+
+    const created = await createBulkGuacamoleIPs(allocations, count, ipsToUse);
+    return res.status(201).json({ success: true, message: 'IPs created', data: created });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: 'Error creating IPs', error: error.message });
   }
 };

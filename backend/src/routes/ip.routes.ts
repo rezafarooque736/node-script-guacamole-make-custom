@@ -1,12 +1,14 @@
-import { Application, Router } from 'express';
+import { Router } from 'express';
 import {
-  changeSingleGuacamoleUserAvailableIPs,
   getGuacamoleUserAvailableIPs,
+  updateGuacamoleUserAvailableIPs,
+  createGuacamoleUserAvailableIPs,
 } from '../controllers/ip.controller';
 
-const router: Application = Router();
+const router: Router = Router();
 
 router.get('/', getGuacamoleUserAvailableIPs);
-router.put('/', changeSingleGuacamoleUserAvailableIPs);
+router.put('/', updateGuacamoleUserAvailableIPs);
+router.post('/', createGuacamoleUserAvailableIPs);
 
 export default router;

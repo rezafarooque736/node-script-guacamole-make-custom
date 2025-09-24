@@ -1,9 +1,10 @@
-import { prisma } from '@/configs/database';
+import { prisma } from "@/configs/database";
 
 // The shape of a single IP entry returned from DB
 export interface GuacamoleUserAvailableIP {
   ip: string;
   group_name: string;
+  gateway?: string | null;
 }
 
 // Define the shape of a single update item (matches IncomingData)
@@ -12,14 +13,16 @@ export interface IncomingData {
   new_ip: string;
   old_group: string;
   new_group: string;
+  old_gateway?: string | null;
+  new_gateway?: string | null;
 }
 
 function parseIp(ip: string): number[] {
-  return ip.split('.').map((p) => Number(p));
+  return ip.split(".").map((p) => Number(p));
 }
 
 function ipToString(parts: number[]): string {
-  return parts.join('.');
+  return parts.join(".");
 }
 
 function nextIp(ip: string): string {
@@ -35,7 +38,7 @@ function nextIp(ip: string): string {
 async function findStartBase(): Promise<string> {
   // pick a stable base: use the earliest DB IP and set last octet to 1
   const row = await prisma.guacamole_user_available_ip.findFirst({
-    orderBy: { id: 'asc' },
+    orderBy: { id: "asc" },
     select: { ip: true },
   });
   if (row?.ip) {
@@ -45,19 +48,19 @@ async function findStartBase(): Promise<string> {
       return `${parts[0]}.${parts[1]}.${parts[2]}.1`;
     }
   }
-  return '100.101.102.1';
+  return "100.101.102.1";
 }
 
 // Fetch function return type: Promise of array of available IPs
 export const fetchGuacamoleUserAvailableIPs = async (): Promise<GuacamoleUserAvailableIP[]> => {
   try {
     const result = await prisma.guacamole_user_available_ip.findMany({
-      select: { ip: true, group_name: true },
-      orderBy: [{ id: 'asc' }],
+      select: { ip: true, group_name: true, gateway: true },
+      orderBy: [{ id: "asc" }],
     });
     return result;
   } catch (error: any) {
-    console.error('Error fetching Guacamole user available IPs:', error.message);
+    console.error("Error fetching Guacamole user available IPs:", error.message);
     throw error;
   }
 };
@@ -75,14 +78,17 @@ export const updateGuacamoleUserAvailableIP = async (
           where: { ip: item.old_ip, group_name: item.old_group },
           select: { id: true },
         });
+
         if (!found) {
-          throw new Error(`Row not found for ip=${item.old_ip} group=${item.old_group}`);
+          throw new Error(
+            `Row not found for ip=${item.old_ip} group=${item.old_group} gateway=${item.old_gateway}`
+          );
         }
 
         const u = await tx.guacamole_user_available_ip.update({
           where: { id: found.id },
-          data: { ip: item.new_ip, group_name: item.new_group },
-          select: { ip: true, group_name: true },
+          data: { ip: item.new_ip, group_name: item.new_group, gateway: item.new_gateway },
+          select: { ip: true, group_name: true, gateway: true },
         });
 
         updated.push(u);
@@ -90,7 +96,7 @@ export const updateGuacamoleUserAvailableIP = async (
       return updated;
     });
   } catch (error: any) {
-    console.error('Error updating Guacamole user available IP:', error.message);
+    console.error("Error updating Guacamole user available IP:", error.message);
     throw error;
   }
 };
@@ -102,21 +108,21 @@ export const updateGuacamoleUserAvailableIP = async (
  * - ips?: optional explicit ips array (length must be total). If provided server will use these ips in-order.
  */
 export const createBulkGuacamoleIPs = async (
-  allocations: { amount: number; group: string }[],
+  allocations: { amount: number; group: string; gateway?: string }[],
   total: number,
   ips?: string[]
 ): Promise<GuacamoleUserAvailableIP[]> => {
-  if (!Array.isArray(allocations)) throw new Error('allocations must be an array');
-  if (!Number.isInteger(total) || total <= 0) throw new Error('total must be integer > 0');
+  if (!Array.isArray(allocations)) throw new Error("allocations must be an array");
+  if (!Number.isInteger(total) || total <= 0) throw new Error("total must be integer > 0");
 
   if (ips && (!Array.isArray(ips) || ips.length !== total)) {
-    throw new Error('ips array length must equal total when provided');
+    throw new Error("ips array length must equal total when provided");
   }
 
   return prisma.$transaction(async (tx) => {
     // Determine starting IP = max existing + 1 or a base
     const latest = await tx.guacamole_user_available_ip.findFirst({
-      orderBy: [{ id: 'desc' }],
+      orderBy: [{ id: "desc" }],
       select: { ip: true },
     });
 
@@ -131,7 +137,6 @@ export const createBulkGuacamoleIPs = async (
         let candidate: string;
         if (ips) {
           candidate = ips[ipsIndex++];
-          // ensure candidate is not already in DB
           const exists = await tx.guacamole_user_available_ip.findFirst({
             where: { ip: candidate },
             select: { id: true },
@@ -140,7 +145,6 @@ export const createBulkGuacamoleIPs = async (
             throw new Error(`Requested ip ${candidate} already exists in database`);
           }
         } else {
-          // advance current until free
           while (true) {
             const exists = await tx.guacamole_user_available_ip.findFirst({
               where: { ip: current },
@@ -157,9 +161,10 @@ export const createBulkGuacamoleIPs = async (
           data: {
             ip: candidate,
             group_name: alloc.group,
+            gateway: alloc.gateway ?? null, // <-- persist gateway here
             is_available_user: 0,
           },
-          select: { ip: true, group_name: true },
+          select: { ip: true, group_name: true, gateway: true },
         });
 
         created.push(row);

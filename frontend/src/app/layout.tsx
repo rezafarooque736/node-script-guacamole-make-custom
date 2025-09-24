@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'guacamole-admin',
-  description: 'guacamole admin panel',
+  title: 'Secure Machine',
+  description: 'Secure Machine Panel',
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <main>{children}</main>
-        <Toaster position="top-center" richColors />
+        <Toaster expand={true} position="top-center" richColors />
       </body>
     </html>
   );

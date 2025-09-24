@@ -230,8 +230,8 @@ model guacamole_user_attribute {
 model guacamole_user_available_ip {
   id                Int       @id @default(autoincrement())
   ip                String    @db.VarChar(256)
-  // ip                String    @id @db.VarChar(256)
   group_name        String    @db.VarChar(128)
+  gateway           String?   @db.VarChar(256)
   user_id           Int?
   username          String?   @db.VarChar(128)
   start_date        DateTime? @db.DateTime(0)

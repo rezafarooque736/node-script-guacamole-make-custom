@@ -36,6 +36,7 @@ export async function deleteGroupByName(name: string) {
     await tx.guacamole_user_group.deleteMany({ where: { entity_id: entity.entity_id } });
     // delete entity last (cascades will help for relations)
     await tx.guacamole_entity.delete({ where: { entity_id: entity.entity_id } });
+    await tx.guacamole_user_available_ip.deleteMany({ where: { group_name: name } });
   });
 }
 

@@ -54,9 +54,15 @@ export default function GroupsPanel() {
     setLoading(true);
     try {
       const res = await fetch('http://localhost:3000/api/guacamole-groups', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load groups');
-      const json = await res.json();
-      setGroups(json.data ?? []);
+
+      const jsonData = await res.json();
+      if (!jsonData.success) {
+        toast.message(jsonData.message, {
+          description: jsonData.error,
+        });
+      } else {
+        setGroups(jsonData.data ?? []);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load groups');
       setGroups([]);
@@ -70,22 +76,22 @@ export default function GroupsPanel() {
   }, []);
 
   async function onCreate(data: z.infer<typeof CreateGroupSchema>) {
-    await toast.promise(
-      (async () => {
-        const res = await fetch('http://localhost:3000/api/guacamole-groups', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: data.name }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message ?? 'Failed to create group');
-        }
-        form.reset();
-        await loadGroups();
-      })(),
-      { loading: 'Creating group…', success: 'Group created', error: (e) => e.message }
-    );
+    const res = await fetch('http://localhost:3000/api/guacamole-groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: data.name }),
+    });
+
+    const jsonData = await res.json();
+    if (!jsonData.success) {
+      toast.message(jsonData.message, {
+        description: jsonData.error,
+      });
+    } else {
+      toast.success('Group created');
+    }
+    form.reset();
+    await loadGroups();
   }
 
   const confirmDelete = (name: string) => setToDelete(name);
@@ -94,19 +100,20 @@ export default function GroupsPanel() {
   const deleteGroup = async (name: string) => {
     setIsDeleting(true);
     try {
-      await toast.promise(
-        (async () => {
-          const res = await fetch(`http://localhost:3000/api/guacamole-groups/${encodeURIComponent(name)}`, {
-            method: 'DELETE',
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message ?? 'Failed to delete group');
-          }
-          await loadGroups();
-        })(),
-        { loading: 'Deleting…', success: 'Group deleted', error: (e) => e.message }
-      );
+      const res = await fetch(`http://localhost:3000/api/guacamole-groups/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      });
+
+      const jsonData = await res.json();
+      if (!jsonData.success) {
+        toast.message(jsonData.message, {
+          description: jsonData.error,
+        });
+      } else {
+        toast.success('Group deleted');
+      }
+      form.reset();
+      await loadGroups();
     } finally {
       setIsDeleting(false);
       setToDelete(null);
